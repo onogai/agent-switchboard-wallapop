@@ -67,8 +67,36 @@ def test_bare_file_id_has_actionable_error():
 ])
 def test_rejects_non_openai_urls_before_network(monkeypatch, tmp_path, url):
     monkeypatch.setattr("wallapop_mcp.photo_inputs.build_opener", lambda *_: pytest.fail("network attempted"))
-    with pytest.raises(ValueError, match="OpenAI HTTPS"):
+    with pytest.raises(ValueError, match="host is not allowed"):
         download_photo(OpenAIFile(download_url=url, file_id="file-1"), tmp_path / "photo.jpg")
+
+
+def test_chatgpt_download_host_is_accepted(monkeypatch, tmp_path):
+    image = Image.new("RGB", (2, 2), "green")
+    buffer = BytesIO()
+    image.save(buffer, "JPEG")
+
+    class Response:
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def read(self, _):
+            return buffer.getvalue()
+
+    class Opener:
+        def open(self, request, timeout):
+            assert request.full_url == "https://files.chatgpt.com/download"
+            return Response()
+
+    monkeypatch.setattr("wallapop_mcp.photo_inputs.build_opener", lambda *_: Opener())
+    destination = tmp_path / "photo.jpg"
+    download_photo(OpenAIFile(download_url="https://files.chatgpt.com/download", file_id="file-1"), destination)
+    assert destination.exists()
 
 
 def test_rejects_oversize_before_read(monkeypatch, tmp_path):

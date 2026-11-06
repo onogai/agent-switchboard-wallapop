@@ -65,14 +65,19 @@ def download_photo(file: OpenAIFile, destination: Path) -> None:
     else:
         url = urlsplit(file.download_url)
         host = (url.hostname or "").lower()
+        allowed_host = any(
+            host == domain or host.endswith("." + domain)
+            for domain in ("oaiusercontent.com", "openai.com", "chatgpt.com")
+        )
         if (
             url.scheme != "https"
-            or not (host == "oaiusercontent.com" or host.endswith(".oaiusercontent.com"))
+            or not allowed_host
             or url.username is not None
             or url.password is not None
             or url.port not in (None, 443)
         ):
-            raise ValueError("photo download URL must be an OpenAI HTTPS file URL")
+            safe_host = host[:80] if host and all(char.isalnum() or char in ".-" for char in host) else "unknown"
+            raise ValueError(f"photo download URL host is not allowed: {safe_host}")
         try:
             request = Request(file.download_url, headers={"Accept": "image/*"})
             with build_opener(_NoRedirect).open(request, timeout=20) as response:

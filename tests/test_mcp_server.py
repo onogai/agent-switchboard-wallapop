@@ -107,6 +107,17 @@ def test_mcp_publish_accepts_object_and_inline_string_file_inputs(tmp_path, monk
     assert not result.is_error
 
 
+def test_publish_returns_download_error_without_creating_listing(tmp_path, monkeypatch):
+    monkeypatch.setenv("WALLAPOP_ACCESS_TOKEN", "tok")
+    mcp_server._init(str(tmp_path), allow_writes=True)
+    monkeypatch.setattr(mcp_server._c(), "publish", lambda **_kwargs: pytest.fail("listing creation attempted"))
+    result = mcp_server.publish_item("T", "D", 10.0, "10311", "good", photo_files=[
+        OpenAIFile(download_url="https://private.example/file", file_id="file-1")
+    ])
+    assert result["ok"] is False
+    assert result["data"]["error_message"] == "photo 1: photo download URL host is not allowed: private.example"
+
+
 def test_save_search_sends_the_web_filter_shape(tmp_path, monkeypatch):
     monkeypatch.setenv("WALLAPOP_ACCESS_TOKEN", "tok")
     mcp_server._init(str(tmp_path), allow_writes=True)

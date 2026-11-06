@@ -415,7 +415,10 @@ def publish_item(
         paths = []
         for index, file in enumerate(photo_files):
             path = Path(directory) / f"photo-{index}.jpg"
-            download_photo(file, path)
+            try:
+                download_photo(file, path)
+            except ValueError as exc:
+                return {"ok": False, "status": 0, "data": {"error_message": f"photo {index + 1}: {exc}"}}
             paths.append(str(path))
         return publish(paths)
 
