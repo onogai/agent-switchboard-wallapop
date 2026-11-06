@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import re
 import time
 import uuid
 import urllib.parse
@@ -29,6 +30,7 @@ from .config import (
     load_session,
     save_session,
 )
+from .diagnostics import diagnostic_message, safe_error_payload
 from .http import ApiError, NotSentError, Response, eprint, http_request, http_request_raw
 from .models import Item, deep_find, extract_items, first, normalize_item
 from .tokens import user_hash_of
@@ -506,7 +508,8 @@ class Wallapop:
         """
         resp = self._authed("GET", f"/items/{item_id}") if authed else self._request("GET", f"/items/{item_id}")
         if not resp.ok:
-            raise ApiError(f"item {item_id} unavailable ({resp.status}): {resp.error_reason or str(resp.data)[:300]}")
+            detail = diagnostic_message(safe_error_payload(resp.data)) or "no error detail supplied"
+            raise ApiError(f"item {item_id} unavailable ({resp.status}): {detail}")
         data = resp.data
         if isinstance(data, str):
             if data.lstrip().startswith("<"):
@@ -1100,11 +1103,9 @@ class Wallapop:
         path that reproduces the browser's multi-photo publish (resolved
         2026-09-03; see ``docs/multi-photo-upload.md``).
 
-        .. note:: Wallapop's POST ``/api/v3/items`` rejects the body with
-           ``400 INVALID_ATTRIBUTE`` when ``color`` is empty (verified 2026-09-03
-           on several categories). Pass a ``color`` value (the web wizard fills
-           it via suggested-item-data, but the pure API POST must include it);
-           ``brand``/``model`` may stay empty.
+        .. note:: Optional ``brand``, ``model`` and ``color`` are sent only
+           when given. Wallapop validates them against the selected category;
+           an unsupported attribute can cause ``400 INVALID_ATTRIBUTE``.
 
         The seller location is taken from ``GET /users/me``; the delivery
         ``cost_configuration_id`` is the account's constant (returned by
@@ -1166,13 +1167,15 @@ class Wallapop:
 
         attributes = {
             "suggested_data_banner": None,
-            "brand": brand,
-            "model": model,
             "title": title,
             "description": description,
             "condition": condition,
             "price_amount": amount,
         }
+        if brand:
+            attributes["brand"] = brand
+        if model:
+            attributes["model"] = model
         # Only send ``color`` when one is given. Categories with no color
         # attribute (e.g. mice, leaf 10311) answer 400 INVALID_ATTRIBUTE when
         # ``color`` is present at all, even as an empty string; for categories
@@ -1239,7 +1242,16 @@ class Wallapop:
                 False,
             )
         if not (200 <= status < 300):
-            return Response(status, {"error_message": f"publish POST failed with status {status}"}, False, status == 401)
+            rejected = status in (400, 401, 403, 404, 422)
+            return Response(status, {
+                "error_message": f"publish POST failed with HTTP {status}",
+                "upstream": safe_error_payload(payload),
+                "created": False if rejected else "unknown",
+                "outcome": "failed" if rejected else "unknown",
+                "photos_total": len(photo_paths),
+                "photos_completed": 0,
+                "publication_status": "failed" if rejected else "unknown",
+            }, False, status == 401)
 
         item_id = payload.get("id") if isinstance(payload, dict) else None
         if not item_id:
@@ -1306,7 +1318,22 @@ class Wallapop:
                         outcome="unknown" if pic_resp.status >= 500 else "failed",
                     )
 
-        return Response(200, payload or {}, True, False)
+        result = dict(payload) if isinstance(payload, dict) else {}
+        result.update({
+            "item_id": item_id,
+            "created": True,
+            "publication_status": "published",
+            "photos_total": len(photo_paths),
+            "photos_completed": len(photo_paths),
+        })
+        slug = result.get("web_slug") or result.get("slug")
+        if isinstance(slug, str) and re.search(r"-\d+$", slug):
+            result["public_id"] = slug.rsplit("-", 1)[-1]
+            result["url"] = f"{WEB_BASE}/item/{slug}"
+        else:
+            result["public_id"] = None
+            result["url"] = None
+        return Response(status, result, True, False)
 
     def _partial_publish(
         self,
@@ -1328,6 +1355,7 @@ class Wallapop:
                 "item_id": item_id,
                 "created": True,
                 "partial": True,
+                "publication_status": "partial",
                 "error_message": error,
                 "outcome": outcome,
                 "photos_total": len(photo_paths),

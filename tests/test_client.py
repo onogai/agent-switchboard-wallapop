@@ -758,6 +758,36 @@ def test_publish_uploads_extra_photos(fake, monkeypatch, tmp_path):
     assert any(u.endswith("/api/v3/items") for u in raw_urls)
 
 
+def test_publish_preserves_safe_400_validation_details(fake, monkeypatch, tmp_path):
+    monkeypatch.setattr(client_mod, "http_request_raw", lambda *a, **k: (
+        400, {"code": "INVALID_ATTRIBUTE", "message": "unsupported color", "field": "color",
+              "access_token": "secret", "url": "https://example.test/?sig=secret"},
+    ))
+    photo = tmp_path / "p.jpg"
+    photo.write_bytes(b"jpeg")
+    response = Wallapop(token="tk").publish([str(photo)], "T", 5.0, color="red")
+    assert response.status == 400 and not response.ok
+    assert response.data["upstream"] == {
+        "code": "INVALID_ATTRIBUTE", "message": "unsupported color", "field": "color",
+    }
+    assert response.data["photos_completed"] == 0
+
+
+def test_publish_success_exposes_identifiers_and_photo_count(fake, monkeypatch, tmp_path):
+    monkeypatch.setattr(client_mod, "http_request_raw", lambda *a, **k: (
+        200, {"id": "9jdw3gx0ml6k", "web_slug": "steelseries-mouse-1321487684"},
+    ))
+    photo = tmp_path / "p.jpg"
+    photo.write_bytes(b"jpeg")
+    response = Wallapop(token="tk").publish([str(photo)], "T", 5.0)
+    assert response.ok
+    assert response.data["item_id"] == "9jdw3gx0ml6k"
+    assert response.data["public_id"] == "1321487684"
+    assert response.data["url"].endswith("/item/steelseries-mouse-1321487684")
+    assert response.data["publication_status"] == "published"
+    assert response.data["photos_completed"] == 1
+
+
 # --- helpers for the new regression tests -----------------------------------
 
 JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJoYXNoZWRfc3ViIjoid3p5bm92bXYxcGo1In0.xx"
@@ -1747,6 +1777,12 @@ def test_publish_omits_color_when_empty(fake, monkeypatch, tmp_path):
     even empty; publish must leave the key out entirely when no color is given."""
     item = _publish_item_json(monkeypatch, tmp_path)  # no color
     assert "color" not in item["attributes"]
+
+
+def test_publish_omits_unspecified_brand_and_model(fake, monkeypatch, tmp_path):
+    item = _publish_item_json(monkeypatch, tmp_path)
+    assert "brand" not in item["attributes"]
+    assert "model" not in item["attributes"]
 
 
 def test_publish_keeps_color_when_given(fake, monkeypatch, tmp_path):

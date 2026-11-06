@@ -33,3 +33,9 @@ def test_resolve_internal_id_pulls_hash_from_url_without_network():
 def test_resolve_internal_id_slug_without_network_raises():
     with pytest.raises(Exception):
         resolve_internal_id("nintendo-switch-lite-sin-red")
+
+
+def test_numeric_public_id_fails_before_network(monkeypatch):
+    monkeypatch.setattr("wallapop_mcp.ids.http_request", lambda *a, **k: pytest.fail("network called"))
+    with pytest.raises(ValueError, match="numeric public URL ID"):
+        resolve_internal_id("1321487684")

@@ -56,11 +56,11 @@ Anchor your first offer below target and move up in small steps; `get_offer_stat
 
 1. **Publish** — `wallapop publish <photos_dir> --summary "<title ≤50>" --price 42 --condition as_good_as_new [--brand Nulea --model M512]`.
    Library/MCP let you set the category: `client.publish(photo_paths=[…], title=…, price=42, category_leaf_id="10311", condition="as_good_as_new", description=…)` / `publish_item`. **Use the right `category_leaf_id`** (mice `10311`, keyboards `10312`; find it from a comparable item's `taxonomy[-1].id`). `color` is optional — only pass it where the category has a color attribute.
-   In ChatGPT, pass attached images to `publish_item.photo_files`. Its documented format is an OpenAI file object with `download_url` and `file_id`; clients that expose file inputs as strings may pass a `data:image/jpeg;base64,...` (also PNG/WebP) value. A bare `file_...` ID cannot be downloaded by this server. `photo_paths` is for paths on the MCP server only. Do not use both. The server accepts at most 10 JPEG, PNG, or WebP photos (15 MB each), converts them to JPEG, and removes temporary files after the call.
+   In ChatGPT, pass attached images to `publish_item.photo_files`. ChatGPT's file parameter handling supplies an OpenAI file object with `download_url` and `file_id`; a bare `file_...` ID sent directly to this server has no download URL. Clients that expose file inputs as strings may pass a `data:image/jpeg;base64,...` (also PNG/WebP) value. `photo_paths` is for paths on the MCP server only. Do not use both. The server accepts at most 10 JPEG, PNG, or WebP photos (15 MB each), converts them to JPEG, and removes temporary files after the call. On success `item_id` is the internal identifier for edit/delete; `public_id` and `url` are available when the create response includes the public slug. Otherwise call `get_item(item_id)` to get the URL. On a partial result inspect the already-created listing before any retry.
 2. **Edit** — `wallapop edit <item> --price 169 --title "…"` (`edit_item`). Lowering the price notifies users who favourited the item. Success is silent.
 3. **Reply to a buyer** (seller side) — reply **by conversation id**; messaging by `item_id` 403s on your own item: `wallapop message --conversation <id> --text "…"` (MCP `send_message` with `conversation_id`).
 4. **Handle offers** — `wallapop offer status`, then `wallapop offer accept <offer_id>` / `decline` / `counter --price 34`. Accept commits the sale (buyer then pays).
-5. **Lifecycle** — `wallapop reserve|sold|delete <item>` (`reserve_item` / `mark_sold` / `delete_item`). A public listing URL is the slug (`.../item/<slug>-<numericid>`), not the bare internal id (which 404s in a browser).
+5. **Lifecycle** — `wallapop reserve|sold|delete <item>` (`reserve_item` / `mark_sold` / `delete_item`). Use the 12-character internal `item_id` from publish/search/get_item, or the complete public URL. The trailing numeric ID alone cannot be resolved reliably. A public listing URL is the slug (`.../item/<slug>-<numericid>`), not the bare internal id (which 404s in a browser).
 
 ## MCP tool reference
 
@@ -87,9 +87,11 @@ before retrying; there is no checkout or payment.
 
 ## API quirks (handled by the library — good to know)
 
-- **`publish` + `color`.** Color-less categories (e.g. mice `10311`) answer `400
-  INVALID_ATTRIBUTE` when `color` is present, even empty. `publish` omits it when
-  empty; pass a color only where the category needs one.
+- **`publish` + optional attributes.** Some categories reject unsupported
+  `brand`, `model`, or `color` with `400 INVALID_ATTRIBUTE`. The client omits
+  these when unspecified; pass a value only when the selected leaf category
+  supports it. A failed publish now returns HTTP status and allowlisted
+  validation details from Wallapop when available.
 - **`edit` state read.** The versioned edit GET (`Accept:
   application/vnd.upload-v2+json`) now returns `406`; `edit_item` reads a plain
   `GET /items/<id>` and maps the live shape (attributes under `type_attributes`,

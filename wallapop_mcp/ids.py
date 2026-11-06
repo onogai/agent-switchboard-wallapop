@@ -20,6 +20,11 @@ def resolve_internal_id(item_ref: str) -> str:
         ref = urllib.parse.urlparse(ref).path.rstrip("/").split("/")[-1]
     if is_internal_id(ref):
         return ref
+    if ref.isdecimal():
+        raise ValueError(
+            "numeric public URL ID cannot be resolved alone; use the 12-character "
+            "internal item_id from publish_item/search/get_item, or a complete public item URL"
+        )
     url = f"{WEB_BASE}/item/{ref}"
     status, payload, _ = http_request("GET", url, headers={"User-Agent": random.choice(USER_AGENTS)})
     if status != 200 or not isinstance(payload, str):
