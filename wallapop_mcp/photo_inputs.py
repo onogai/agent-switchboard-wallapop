@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 MAX_PHOTOS = 10
 MAX_DOWNLOAD_BYTES = 15 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = 40_000_000
+OPENAI_AZURE_BLOB_HOST = re.compile(r"oaisdmntpr[a-z0-9]{1,14}\.blob\.core\.windows\.net\Z")
 
 
 class OpenAIFile(BaseModel):
@@ -65,7 +67,7 @@ def download_photo(file: OpenAIFile, destination: Path) -> None:
     else:
         url = urlsplit(file.download_url)
         host = (url.hostname or "").lower()
-        allowed_host = host == "oaisdmntprukwest.blob.core.windows.net" or any(
+        allowed_host = bool(OPENAI_AZURE_BLOB_HOST.fullmatch(host)) or any(
             host == domain or host.endswith("." + domain)
             for domain in ("oaiusercontent.com", "openai.com", "chatgpt.com")
         )

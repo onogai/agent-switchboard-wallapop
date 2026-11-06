@@ -66,6 +66,8 @@ def test_bare_file_id_has_actionable_error():
     "https://user@files.oaiusercontent.com/file-1",
     "https://other.blob.core.windows.net/file-1",
     "https://oaisdmntprukwest.blob.core.windows.net.evil.example/file-1",
+    "https://evil.oaisdmntprukwest.blob.core.windows.net/file-1",
+    "https://oaisdmntprtoolongregionnamethatexceeds24.blob.core.windows.net/file-1",
 ])
 def test_rejects_non_openai_urls_before_network(monkeypatch, tmp_path, url):
     monkeypatch.setattr("wallapop_mcp.photo_inputs.build_opener", lambda *_: pytest.fail("network attempted"))
@@ -73,7 +75,11 @@ def test_rejects_non_openai_urls_before_network(monkeypatch, tmp_path, url):
         download_photo(OpenAIFile(download_url=url, file_id="file-1"), tmp_path / "photo.jpg")
 
 
-@pytest.mark.parametrize("host", ["files.chatgpt.com", "oaisdmntprukwest.blob.core.windows.net"])
+@pytest.mark.parametrize("host", [
+    "files.chatgpt.com",
+    "oaisdmntprukwest.blob.core.windows.net",
+    "oaisdmntprdenmarkeast.blob.core.windows.net",
+])
 def test_chatgpt_download_host_is_accepted(monkeypatch, tmp_path, host):
     image = Image.new("RGB", (2, 2), "green")
     buffer = BytesIO()
