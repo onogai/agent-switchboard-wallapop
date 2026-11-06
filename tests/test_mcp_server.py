@@ -91,6 +91,22 @@ def test_publish_rejects_missing_or_ambiguous_photos(tmp_path, monkeypatch):
         mcp_server.publish_item("T", "D", 10.0, "10311", "good", photo_paths=["a.jpg"], photo_files=[OpenAIFile(download_url="https://files.oaiusercontent.com/1", file_id="1")])
 
 
+@pytest.mark.parametrize("file_input", [
+    {"download_url": "https://files.oaiusercontent.com/1", "file_id": "file_1"},
+    "data:image/jpeg;base64,YQ==",
+])
+def test_mcp_publish_accepts_object_and_inline_string_file_inputs(tmp_path, monkeypatch, file_input):
+    monkeypatch.setenv("WALLAPOP_ACCESS_TOKEN", "tok")
+    mcp_server._init(str(tmp_path), allow_writes=True)
+    monkeypatch.setattr(mcp_server, "download_photo", lambda _file, destination: destination.write_bytes(b"jpeg"))
+    monkeypatch.setattr(mcp_server._c(), "publish", lambda **_kwargs: mcp_server.Response(200, {"id": "item-1"}, True, False))
+    result = asyncio.run(mcp_server.build_server(True).call_tool("publish_item", {
+        "title": "T", "description": "D", "price": 10.0,
+        "category_leaf_id": "10311", "condition": "good", "photo_files": [file_input],
+    }))
+    assert not result.is_error
+
+
 def test_save_search_sends_the_web_filter_shape(tmp_path, monkeypatch):
     monkeypatch.setenv("WALLAPOP_ACCESS_TOKEN", "tok")
     mcp_server._init(str(tmp_path), allow_writes=True)

@@ -1,5 +1,6 @@
 """ChatGPT photo inputs stay bounded and never fetch arbitrary hosts."""
 
+import base64
 from io import BytesIO
 
 import pytest
@@ -37,6 +38,25 @@ def test_download_photo_converts_png_to_jpeg(monkeypatch, tmp_path):
     with Image.open(destination) as converted:
         assert converted.format == "JPEG"
         assert converted.size == (4, 3)
+
+
+def test_data_url_string_is_accepted_and_converted_without_network(monkeypatch, tmp_path):
+    image = Image.new("RGB", (4, 3), "blue")
+    buffer = BytesIO()
+    image.save(buffer, "JPEG")
+    value = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode()
+    file = OpenAIFile.model_validate(value)
+    monkeypatch.setattr("wallapop_mcp.photo_inputs.build_opener", lambda *_: pytest.fail("network attempted"))
+    destination = tmp_path / "photo.jpg"
+    download_photo(file, destination)
+    with Image.open(destination) as converted:
+        assert converted.format == "JPEG"
+        assert converted.size == (4, 3)
+
+
+def test_bare_file_id_has_actionable_error():
+    with pytest.raises(ValueError, match="file_id alone cannot be downloaded"):
+        OpenAIFile.model_validate("file_example")
 
 
 @pytest.mark.parametrize("url", [
