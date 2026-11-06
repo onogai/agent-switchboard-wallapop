@@ -56,6 +56,7 @@ Anchor your first offer below target and move up in small steps; `get_offer_stat
 
 1. **Publish** — `wallapop publish <photos_dir> --summary "<title ≤50>" --price 42 --condition as_good_as_new [--brand Nulea --model M512]`.
    Library/MCP let you set the category: `client.publish(photo_paths=[…], title=…, price=42, category_leaf_id="10311", condition="as_good_as_new", description=…)` / `publish_item`. **Use the right `category_leaf_id`** (mice `10311`, keyboards `10312`; find it from a comparable item's `taxonomy[-1].id`). `color` is optional — only pass it where the category has a color attribute.
+   In ChatGPT, pass attached images to `publish_item.photo_files`; ChatGPT supplies each file object automatically. `photo_paths` is for paths on the MCP server only. Do not use both. The server downloads at most 10 JPEG, PNG, or WebP photos (15 MB each), converts them to JPEG, and removes temporary files after the call.
 2. **Edit** — `wallapop edit <item> --price 169 --title "…"` (`edit_item`). Lowering the price notifies users who favourited the item. Success is silent.
 3. **Reply to a buyer** (seller side) — reply **by conversation id**; messaging by `item_id` 403s on your own item: `wallapop message --conversation <id> --text "…"` (MCP `send_message` with `conversation_id`).
 4. **Handle offers** — `wallapop offer status`, then `wallapop offer accept <offer_id>` / `decline` / `counter --price 34`. Accept commits the sale (buyer then pays).

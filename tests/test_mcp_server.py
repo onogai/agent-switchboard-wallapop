@@ -8,6 +8,7 @@ import asyncio
 import pytest
 
 import wallapop_mcp.mcp_server as mcp_server
+from wallapop_mcp.photo_inputs import OpenAIFile
 
 READ_TOOLS = {
     "session_status", "search", "get_item", "get_seller", "list_categories",
@@ -58,6 +59,36 @@ def test_publish_rejects_non_shipping(tmp_path, monkeypatch):
             title="t", description="d", price=10.0, category_leaf_id="10311",
             condition="good", photo_paths=["x.jpg"], shipping_allowed=False,
         )
+
+
+def test_publish_downloads_chatgpt_files_before_publishing(tmp_path, monkeypatch):
+    monkeypatch.setenv("WALLAPOP_ACCESS_TOKEN", "tok")
+    mcp_server._init(str(tmp_path), allow_writes=True)
+    downloaded = []
+
+    def fake_download(file, destination):
+        downloaded.append(file.file_id)
+        destination.write_bytes(b"jpeg")
+
+    def fake_publish(**kwargs):
+        assert [open(path, "rb").read() for path in kwargs["photo_paths"]] == [b"jpeg", b"jpeg"]
+        return mcp_server.Response(200, {"id": "item-1"}, True, False)
+
+    monkeypatch.setattr(mcp_server, "download_photo", fake_download)
+    monkeypatch.setattr(mcp_server._c(), "publish", fake_publish)
+    files = [OpenAIFile(download_url=f"https://files.oaiusercontent.com/file-{i}", file_id=f"file-{i}") for i in (1, 2)]
+    result = mcp_server.publish_item("T", "D", 10.0, "10311", "good", photo_files=files)
+    assert result["ok"] is True
+    assert downloaded == ["file-1", "file-2"]
+
+
+def test_publish_rejects_missing_or_ambiguous_photos(tmp_path, monkeypatch):
+    monkeypatch.setenv("WALLAPOP_ACCESS_TOKEN", "tok")
+    mcp_server._init(str(tmp_path), allow_writes=True)
+    with pytest.raises(ValueError, match="exactly one"):
+        mcp_server.publish_item("T", "D", 10.0, "10311", "good")
+    with pytest.raises(ValueError, match="exactly one"):
+        mcp_server.publish_item("T", "D", 10.0, "10311", "good", photo_paths=["a.jpg"], photo_files=[OpenAIFile(download_url="https://files.oaiusercontent.com/1", file_id="1")])
 
 
 def test_save_search_sends_the_web_filter_shape(tmp_path, monkeypatch):

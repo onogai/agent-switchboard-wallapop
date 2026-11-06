@@ -16,7 +16,9 @@ import argparse
 import dataclasses
 import json
 import os
+import tempfile
 import threading
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 from . import config as _cfg
@@ -24,6 +26,7 @@ from .client import Wallapop
 from .http import Response
 from .ids import resolve_internal_id
 from .models import offer_state_summary, parse_offer_events
+from .photo_inputs import MAX_PHOTOS, OpenAIFile, download_photo
 from .session import build_client
 
 _client: Optional[Wallapop] = None
@@ -370,34 +373,51 @@ def publish_item(
     price: float,
     category_leaf_id: str,
     condition: Condition,
-    photo_paths: list[str],
+    photo_paths: list[str] = [],
     shipping_allowed: bool = True,
     color: Optional[str] = None,
     brand: Optional[str] = None,
     model: Optional[str] = None,
     max_weight_kg: int = 1,
     cost_configuration_id: Optional[str] = None,
+    photo_files: list[OpenAIFile] = [],
 ) -> dict:
-    """Publish a listing. A partial result retains the created item ID when a later photo fails; do not recreate it."""
+    """Publish a listing. Pass ChatGPT attachments in photo_files, or server-local photo_paths. A partial result retains the created item ID when a later photo fails; do not recreate it."""
     _require_session()
     if not shipping_allowed:
         raise ValueError("non-shipping publish is not supported by the Python backend yet")
-    with _lock:
-        return _resp(
-            _c().publish(
-                photo_paths=photo_paths,
-                title=title,
-                price=price,
-                category_leaf_id=category_leaf_id,
-                condition=condition,
-                description=description,
-                brand=brand or "",
-                model=model or "",
-                color=color or "",
-                max_weight_kg=max_weight_kg,
-                cost_configuration_id=cost_configuration_id,
+    if bool(photo_paths) == bool(photo_files):
+        raise ValueError("provide photos in exactly one of photo_files or photo_paths")
+    if photo_files and len(photo_files) > MAX_PHOTOS:
+        raise ValueError("at most 10 photos are supported")
+
+    def publish(paths: list[str]) -> dict:
+        with _lock:
+            return _resp(
+                _c().publish(
+                    photo_paths=paths,
+                    title=title,
+                    price=price,
+                    category_leaf_id=category_leaf_id,
+                    condition=condition,
+                    description=description,
+                    brand=brand or "",
+                    model=model or "",
+                    color=color or "",
+                    max_weight_kg=max_weight_kg,
+                    cost_configuration_id=cost_configuration_id,
+                )
             )
-        )
+
+    if photo_paths:
+        return publish(photo_paths)
+    with tempfile.TemporaryDirectory(prefix="wallapop-photos-") as directory:
+        paths = []
+        for index, file in enumerate(photo_files):
+            path = Path(directory) / f"photo-{index}.jpg"
+            download_photo(file, path)
+            paths.append(str(path))
+        return publish(paths)
 
 
 def edit_item(
