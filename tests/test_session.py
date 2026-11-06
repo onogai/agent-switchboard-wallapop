@@ -15,7 +15,7 @@ from wallapop_mcp.session import SessionError, build_client
 def stored(monkeypatch):
     """Fake the stored credentials/session."""
 
-    state = {"creds": {}, "session": {}, "minted": None}
+    state = {"creds": {}, "session": {}, "minted": None, "saved_creds": None, "saved_session": None}
 
     def fake_refresh(web_session):
         state["minted"] = dict(web_session)
@@ -24,6 +24,10 @@ def stored(monkeypatch):
     monkeypatch.setattr(session_mod, "load_credentials", lambda: dict(state["creds"]))
     monkeypatch.setattr(session_mod, "load_session", lambda: dict(state["session"]))
     monkeypatch.setattr(session_mod, "refresh_web_session", fake_refresh)
+    monkeypatch.setattr(session_mod, "save_credentials", lambda creds: state.update(saved_creds=dict(creds)))
+    monkeypatch.setattr(session_mod, "persist_browser_session", lambda cookies, token: state.update(saved_session={**cookies, "accessToken": token}))
+    for name in ("WALLAPOP_BROWSER_SESSION_TOKEN", "WALLAPOP_DEVICE_ID", "WALLAPOP_DEVICE_FGP"):
+        monkeypatch.delenv(name, raising=False)
     return state
 
 
@@ -89,6 +93,26 @@ def test_build_client_mints_a_token_from_the_browser_session(stored):
     client, _ = build_client()
     assert client.token == "minted-token"
     assert stored["minted"] is not None
+
+
+def test_build_client_uses_browser_session_from_environment(stored, monkeypatch):
+    monkeypatch.setenv("WALLAPOP_BROWSER_SESSION_TOKEN", "new-session")
+    monkeypatch.setenv("WALLAPOP_DEVICE_ID", "device-1")
+    client, _ = build_client()
+    assert client.token == "minted-token"
+    assert stored["minted"] == {"__Secure-next-auth.session-token": "new-session", "device_id": "device-1"}
+    assert stored["saved_session"]["__Secure-next-auth.session-token"] == "new-session"
+    assert stored["saved_creds"]["access_token"] == "minted-token"
+
+
+def test_new_browser_session_ignores_old_account_credentials(stored, monkeypatch):
+    stored["creds"] = {"access_token": "old-access", "refresh_token": "old-refresh"}
+    stored["session"] = {"__Secure-next-auth.session-token": "old-session", "accessToken": "old-access"}
+    monkeypatch.setenv("WALLAPOP_BROWSER_SESSION_TOKEN", "new-session")
+    client, creds = build_client()
+    assert creds == {}
+    assert client.token == "minted-token"
+    assert client.refresh_token is None
 
 
 def test_cli_helper_turns_a_missing_session_into_system_exit(stored, monkeypatch):

@@ -6,7 +6,8 @@ writes are hidden unless started with ``--allow-writes`` and need a session.
 
 Run: ``wallapop-mcp [--allow-writes] [--session <dir|file>]`` (or
 ``python -m wallapop_mcp.mcp_server``). Session comes from ``--session``, or
-``WALLAPOP_ACCESS_TOKEN`` (+ optional ``WALLAPOP_REFRESH_TOKEN``), or the default
+``WALLAPOP_BROWSER_SESSION_TOKEN``, ``WALLAPOP_ACCESS_TOKEN`` (+ optional
+``WALLAPOP_REFRESH_TOKEN``), or the default
 ``~/.config/wallapop-mcp``.
 """
 from __future__ import annotations
@@ -54,7 +55,7 @@ def _configure_session(session_path: Optional[str]) -> None:
 
 def _build_client() -> Wallapop:
     token = os.environ.get("WALLAPOP_ACCESS_TOKEN")
-    if token:
+    if token and not os.environ.get("WALLAPOP_BROWSER_SESSION_TOKEN"):
         return Wallapop(token=token, refresh_token=os.environ.get("WALLAPOP_REFRESH_TOKEN"))
     client, _ = build_client(required=False)  # public client when no session
     return client

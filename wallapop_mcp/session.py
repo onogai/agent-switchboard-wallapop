@@ -15,6 +15,8 @@ turns a missing session into a friendly ``SystemExit(1)``.
 
 from __future__ import annotations
 
+import os
+
 from .client import Wallapop, persist_browser_session, refresh_web_session
 from .config import load_credentials, load_session, save_credentials
 from .http import ApiError
@@ -38,6 +40,20 @@ def build_client(required: bool = True) -> tuple[Wallapop, dict]:
     """
     creds = load_credentials()
     session = load_session()
+    browser_token = os.environ.get("WALLAPOP_BROWSER_SESSION_TOKEN", "").strip()
+    env_session = bool(browser_token)
+    if env_session:
+        # A changed browser login must never reuse the previous account's token.
+        if session.get("__Secure-next-auth.session-token") != browser_token:
+            creds = {}
+            session = {}
+        session["__Secure-next-auth.session-token"] = browser_token
+        for env_name, cookie_name in (
+            ("WALLAPOP_DEVICE_ID", "device_id"),
+            ("WALLAPOP_DEVICE_FGP", "device_fgp"),
+        ):
+            if value := os.environ.get(env_name, "").strip():
+                session[cookie_name] = value
     web_cookies = session if session.get("__Secure-next-auth.session-token") else None
     token = creds.get("access_token") or session.get("accessToken") or ""
     if not token and web_cookies:
@@ -72,6 +88,8 @@ def build_client(required: bool = True) -> tuple[Wallapop, dict]:
     if token:
         client.user = creds.get("user", {}) or {}
         refresh_if_expired(client)
+        if env_session and not creds.get("access_token"):
+            persist(client)
     return client, creds
 
 
