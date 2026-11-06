@@ -64,6 +64,8 @@ def test_bare_file_id_has_actionable_error():
     "https://127.0.0.1/file-1",
     "https://files.oaiusercontent.com.evil.example/file-1",
     "https://user@files.oaiusercontent.com/file-1",
+    "https://other.blob.core.windows.net/file-1",
+    "https://oaisdmntprukwest.blob.core.windows.net.evil.example/file-1",
 ])
 def test_rejects_non_openai_urls_before_network(monkeypatch, tmp_path, url):
     monkeypatch.setattr("wallapop_mcp.photo_inputs.build_opener", lambda *_: pytest.fail("network attempted"))
@@ -71,7 +73,8 @@ def test_rejects_non_openai_urls_before_network(monkeypatch, tmp_path, url):
         download_photo(OpenAIFile(download_url=url, file_id="file-1"), tmp_path / "photo.jpg")
 
 
-def test_chatgpt_download_host_is_accepted(monkeypatch, tmp_path):
+@pytest.mark.parametrize("host", ["files.chatgpt.com", "oaisdmntprukwest.blob.core.windows.net"])
+def test_chatgpt_download_host_is_accepted(monkeypatch, tmp_path, host):
     image = Image.new("RGB", (2, 2), "green")
     buffer = BytesIO()
     image.save(buffer, "JPEG")
@@ -90,12 +93,12 @@ def test_chatgpt_download_host_is_accepted(monkeypatch, tmp_path):
 
     class Opener:
         def open(self, request, timeout):
-            assert request.full_url == "https://files.chatgpt.com/download"
+            assert request.full_url == f"https://{host}/download"
             return Response()
 
     monkeypatch.setattr("wallapop_mcp.photo_inputs.build_opener", lambda *_: Opener())
     destination = tmp_path / "photo.jpg"
-    download_photo(OpenAIFile(download_url="https://files.chatgpt.com/download", file_id="file-1"), destination)
+    download_photo(OpenAIFile(download_url=f"https://{host}/download", file_id="file-1"), destination)
     assert destination.exists()
 
 

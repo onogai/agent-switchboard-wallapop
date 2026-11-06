@@ -65,7 +65,7 @@ def download_photo(file: OpenAIFile, destination: Path) -> None:
     else:
         url = urlsplit(file.download_url)
         host = (url.hostname or "").lower()
-        allowed_host = any(
+        allowed_host = host == "oaisdmntprukwest.blob.core.windows.net" or any(
             host == domain or host.endswith("." + domain)
             for domain in ("oaiusercontent.com", "openai.com", "chatgpt.com")
         )
