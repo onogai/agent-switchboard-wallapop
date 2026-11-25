@@ -56,10 +56,12 @@ def build_client(required: bool = True) -> tuple[Wallapop, dict]:
                 session[cookie_name] = value
     web_cookies = session if session.get("__Secure-next-auth.session-token") else None
     token = creds.get("access_token") or session.get("accessToken") or ""
+    minted = False
     if not token and web_cookies:
         refreshed = refresh_web_session(web_cookies)
         if refreshed:
             token = refreshed
+            minted = True
     if required and not token:
         raise SessionError(
             "not logged in. run: wallapop login <email> <password>  "
@@ -88,7 +90,7 @@ def build_client(required: bool = True) -> tuple[Wallapop, dict]:
     if token:
         client.user = creds.get("user", {}) or {}
         refresh_if_expired(client)
-        if env_session and not creds.get("access_token"):
+        if minted or (env_session and not creds.get("access_token")):
             persist(client)
     return client, creds
 

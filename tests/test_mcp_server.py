@@ -14,7 +14,8 @@ READ_TOOLS = {
     "session_status", "search", "get_item", "get_seller", "list_categories",
     "list_inbox", "get_conversation", "unread_count", "list_purchases",
     "list_sales", "get_offer_constraints", "get_offer_status",
-    "seller_items", "suggest", "list_favorites", "saved_search_hits",
+    "seller_items", "suggest", "list_favorites", "list_saved_searches",
+    "saved_search_results", "saved_search_hits",
     "check_saved_search",
 }
 WRITE_TOOLS = {
@@ -41,7 +42,7 @@ def test_allow_writes_exposes_mutations(tmp_path):
     mcp_server._init(str(tmp_path), allow_writes=True)
     both = _tool_names(True)
     assert both == READ_TOOLS | WRITE_TOOLS
-    assert len(both) == 30
+    assert len(both) == 32
 
 
 def test_account_tool_requires_a_session(tmp_path, monkeypatch):
@@ -198,3 +199,16 @@ def test_check_saved_search_reports_missing(tmp_path, monkeypatch):
     mcp_server._init(str(tmp_path), allow_writes=False)
     monkeypatch.setattr(mcp_server._c(), "saved_search_exists", lambda params: None)
     assert mcp_server.check_saved_search("switch") == {"saved": False, "id": None}
+
+
+def test_saved_search_read_tools_delegate(tmp_path, monkeypatch):
+    monkeypatch.setenv("WALLAPOP_ACCESS_TOKEN", "tok")
+    mcp_server._init(str(tmp_path), allow_writes=False)
+    searches = [{"id": "s1", "name": "bike", "filters": {"keywords": "bike"}}]
+    monkeypatch.setattr(mcp_server._c(), "list_saved_searches", lambda: searches)
+    assert mcp_server.list_saved_searches() == searches
+    seen = []
+    monkeypatch.setattr(mcp_server._c(), "saved_search_results",
+                        lambda *args: seen.append(args) or {"items": [], "has_more": False})
+    assert mcp_server.saved_search_results("s1", "cursor", "result")["has_more"] is False
+    assert seen == [("s1", "cursor", "result")]

@@ -170,6 +170,35 @@ def _saved_search_id_from_location(location: str) -> Optional[str]:
     return last or None
 
 
+def _saved_search_query(raw: dict) -> dict:
+    """Keep the site's search parameters, including category-specific filters."""
+    query = {}
+    for key in ("query", "search", "url", "query_params", "queryParams",
+                "search_params", "searchParams", "params", "filters"):
+        value = raw.get(key)
+        if isinstance(value, dict):
+            query.update(value)
+        elif isinstance(value, str) and ("=" in value or "?" in value):
+            query.update(dict(urllib.parse.parse_qsl(urllib.parse.urlparse(value).query or value)))
+    for key in ("keywords", "category_id", "subcategory_ids", "condition",
+                "min_sale_price", "max_sale_price", "is_shippable", "latitude",
+                "longitude", "max_radius_kms", "order_by", "time_filter"):
+        if key in raw and raw[key] is not None:
+            query.setdefault(key, raw[key])
+    location = raw.get("location")
+    if isinstance(location, dict):
+        for source, target in (("latitude", "latitude"), ("longitude", "longitude"),
+                               ("lat", "latitude"), ("lng", "longitude")):
+            if location.get(source) is not None:
+                query.setdefault(target, location[source])
+    for key in ("radius_km", "distance_km"):
+        if raw.get(key) is not None:
+            query.setdefault("max_radius_kms", raw[key])
+    for key in ("source", "filters_source", "search_id", "next_page", "section_type"):
+        query.pop(key, None)
+    return query
+
+
 class Wallapop:
     def __init__(
         self,
@@ -1521,6 +1550,78 @@ class Wallapop:
             raise ApiError(f"check saved search failed ({status})")
         return _saved_search_id_from_location((resp_headers or {}).get("Location") or "")
 
+    def list_saved_searches(self) -> list[dict]:
+        """List account alerts with their IDs, display names and replayable filters."""
+        resp = self._authed("GET", "/searchalerts/savedsearch")
+        if not resp.ok:
+            raise ApiError(f"list saved searches failed ({resp.status})")
+        payload = resp.data
+        if isinstance(payload, dict):
+            payload = payload.get("data", payload)
+        if isinstance(payload, dict):
+            payload = next((payload[key] for key in ("saved_searches", "savedSearches", "searches", "items")
+                            if isinstance(payload.get(key), list)), None)
+        if not isinstance(payload, list):
+            raise ApiError("unexpected saved searches response shape")
+        searches = []
+        for raw in payload:
+            if not isinstance(raw, dict) or not raw.get("id"):
+                raise ApiError("saved search has no id")
+            filters = _saved_search_query(raw)
+            if not filters:
+                raise ApiError(f"saved search {raw['id']} has no replayable filters")
+            searches.append({"id": str(raw["id"]),
+                             "name": str(raw.get("title") or raw.get("name") or raw.get("description") or filters.get("keywords") or ""),
+                             "filters": filters})
+        return searches
+
+    def saved_search_results(self, search_id: str, next_page: Optional[str] = None,
+                             result_search_id: Optional[str] = None) -> dict:
+        """Run one saved query and return one cursor-paginated result page."""
+        saved = next((s for s in self.list_saved_searches() if s["id"] == search_id), None)
+        if saved is None:
+            raise ApiError(f"saved search {search_id} not found")
+        if next_page and not result_search_id:
+            raise ValueError("result_search_id is required with next_page")
+        base = dict(saved["filters"])
+        base.setdefault("source", "search_box")
+        base.setdefault("filters_source", "search_box")
+        base.setdefault("order_by", "most_relevance")
+        if not result_search_id:
+            components = self._request("GET", "/search/components", params=base)
+            if not components.ok:
+                raise ApiError(f"saved search failed ({components.status})")
+            result_search_id = first(deep_find(components.data, "search_id"))
+            if not result_search_id:
+                raise ApiError("saved search returned no search_id")
+        params = dict(base)
+        params.update({"search_id": result_search_id, "section_type": "organic_search_results", "source": "deep_link"})
+        if next_page:
+            params["next_page"] = next_page
+        resp = self._request("GET", "/search/section", params=params)
+        if not resp.ok:
+            raise ApiError(f"saved search page failed ({resp.status})")
+        items = []
+        for raw in extract_items(resp.data):
+            if not isinstance(raw, dict) or not raw.get("id"):
+                continue
+            item = normalize_item(raw)
+            slug = raw.get("web_slug") or raw.get("slug")
+            url = raw.get("share_url") or raw.get("shareUrl")
+            if not url and slug:
+                url = f"{WEB_BASE}/item/{slug}"
+            if not url:
+                try:
+                    detail = self.item(item.id)
+                    url = detail.url if detail.url != f"{WEB_BASE}/item/{item.id}" else None
+                except ApiError:
+                    url = None
+            items.append({"id": item.id, "title": item.title, "price": item.price,
+                          "currency": item.currency, "url": url, "created_at": item.created_at})
+        cursor = first(deep_find(resp.data, "next_page"))
+        return {"saved_search_id": search_id, "items": items, "next_page": cursor or None,
+                "result_search_id": result_search_id, "has_more": bool(cursor)}
+
     def saved_search_hits(self) -> int:
         """Total new-listing counter across your saved searches (GET .../alerts/total-hits).
 
@@ -1528,7 +1629,7 @@ class Wallapop:
         """
         resp = self._authed("GET", "/searchalerts/savedsearch/alerts/total-hits")
         if not resp.ok:
-            return 0
+            raise ApiError(f"saved search hits failed ({resp.status})")
         data = resp.data if isinstance(resp.data, dict) else {}
         hits = data.get("hits")
         return int(hits) if isinstance(hits, (int, float)) else 0

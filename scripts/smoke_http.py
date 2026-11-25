@@ -27,6 +27,8 @@ async def main():
         else:
             raise AssertionError("Unauthenticated request accepted")
     expected = set(json.loads(sys.argv[3]))
+    assert len(expected) == 32
+    assert {"list_saved_searches", "saved_search_results"} <= expected
     start = time.monotonic()
     async with Client(StreamableHttpTransport(url, headers={"Authorization":"Bearer "+token})) as client:
         names = {tool.name for tool in await client.list_tools()}
@@ -38,6 +40,15 @@ async def main():
             assert data["writes_enabled"] is True
             assert data["logged_in"] is False
     print(f"PASS auth, {len(names)} tools, repeated local status; {time.monotonic()-start:.2f}s")
+    for index in range(2):
+        start = time.monotonic()
+        async with Client(StreamableHttpTransport(url, headers={"Authorization": "Bearer " + token})) as client:
+            result = await client.call_tool("session_status", {})
+            assert not result.is_error
+            data = result.structured_content or json.loads(result.content[0].text)
+            assert data["writes_enabled"] is True
+            assert data["logged_in"] is False
+        print(f"PASS fresh session {index+1}; {time.monotonic()-start:.2f}s")
 
 
 if __name__ == "__main__":

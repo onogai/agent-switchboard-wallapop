@@ -32,10 +32,9 @@ The add-on has no published port. Grant the desired tools in Manager.
 
 ## Replace the old production service
 
-Before any cutover, compare the live tool inventory AND its source checkout to
-the proposed Git revision. **The observed production has 32 tools, while the
-initial Git main has 30**; reconcile the two missing saved-search tools first.
-Do not deploy a reduced catalog.
+The 32-tool production saved-search implementation has been imported into this
+repository. Before cutover verify the live catalog matches the candidate,
+including list_saved_searches and saved_search_results.
 
 The existing anonymous-to-bearer transition is not supported by the staged
 replacement helper. Use a separate candidate instance for smoke tests, then
