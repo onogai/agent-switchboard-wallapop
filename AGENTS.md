@@ -64,13 +64,13 @@ Anchor your first offer below target and move up in small steps; `get_offer_stat
 
 ## MCP tool reference
 
-30 tools. The 13 writes appear only with `--allow-writes`.
+32 tools. The 13 writes appear only with `--allow-writes`.
 
 **Reads:** `session_status`, `search`, `suggest`, `get_item`, `get_seller`,
 `seller_items`, `list_categories`, `list_inbox`, `get_conversation`,
 `unread_count`, `list_purchases` (`tab`), `list_sales` (`tab`),
 `get_offer_constraints`, `get_offer_status`, `list_favorites`,
-`saved_search_hits`, `check_saved_search`.
+`list_saved_searches`, `saved_search_results`, `saved_search_hits`, `check_saved_search`.
 
 **Writes:** `set_favorite`, `send_message` (`item_id` **or** `conversation_id`),
 `send_offer`, `respond_offer`, `counter_offer`, `publish_item`, `edit_item`,

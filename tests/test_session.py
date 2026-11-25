@@ -93,6 +93,13 @@ def test_build_client_mints_a_token_from_the_browser_session(stored):
     client, _ = build_client()
     assert client.token == "minted-token"
     assert stored["minted"] is not None
+    assert stored["saved_creds"]["access_token"] == "minted-token"
+    assert stored["saved_session"]["accessToken"] == "minted-token"
+    stored["creds"] = stored["saved_creds"]
+    stored["session"] = stored["saved_session"]
+    stored["minted"] = None
+    assert build_client()[0].token == "minted-token"
+    assert stored["minted"] is None
 
 
 def test_build_client_uses_browser_session_from_environment(stored, monkeypatch):

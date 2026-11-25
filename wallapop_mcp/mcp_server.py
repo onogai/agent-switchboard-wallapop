@@ -301,6 +301,24 @@ def saved_search_hits() -> dict:
         return {"hits": _c().saved_search_hits()}
 
 
+def list_saved_searches() -> list:
+    """List all saved searches with IDs, names and the exact filters used to replay them."""
+    _require_session()
+    with _lock:
+        return _jsonable(_c().list_saved_searches())
+
+
+def saved_search_results(search_id: str, next_page: Optional[str] = None,
+                         result_search_id: Optional[str] = None) -> dict:
+    """Get one page of a saved search. Pass both returned cursors for the next page; start without them on each new run."""
+    _require_session()
+    try:
+        with _lock:
+            return _jsonable(_c().saved_search_results(search_id, next_page, result_search_id))
+    except (ApiError, ValueError) as exc:
+        return _known_error(exc)
+
+
 def check_saved_search(
     keywords: str,
     order_by: Optional[OrderBy] = None,
@@ -569,7 +587,8 @@ _READ_TOOLS = [
     session_status, search, get_item, get_seller, list_categories, list_inbox,
     get_conversation, unread_count, list_purchases, list_sales,
     get_offer_constraints, get_offer_status, seller_items, suggest,
-    list_favorites, saved_search_hits, check_saved_search,
+    list_favorites, list_saved_searches, saved_search_results,
+    saved_search_hits, check_saved_search,
 ]
 _WRITE_TOOLS = [
     set_favorite, send_message, send_offer, respond_offer, counter_offer,

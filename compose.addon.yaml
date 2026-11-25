@@ -1,0 +1,37 @@
+services:
+  wallapop:
+    build:
+      context: .
+      dockerfile: packaging/http/Dockerfile
+    user: "${HOST_UID:?}:${HOST_GID:?}"
+    restart: unless-stopped
+    environment:
+      HOME: /tmp
+      WALLAPOP_CONFIG_DIR: /data
+    volumes:
+      - "${SWITCHBOARD_ADDON_STATE:?}/data:/data"
+      - "${SWITCHBOARD_ADDON_STATE:?}/secrets/mcptoken:/run/secrets/mcptoken:ro"
+    networks:
+      addons:
+        aliases:
+          - "${SWITCHBOARD_ADDON_DNS:?}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,noexec,size=128m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8768), 2).close()"]
+      interval: 20s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+networks:
+  addons:
+    external: true
+    name: "${SWITCHBOARD_ADDONS_NETWORK:?}"
