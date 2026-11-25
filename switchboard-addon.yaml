@@ -1,0 +1,12 @@
+schema: 2
+id: wallapop
+name: Wallapop
+icon: assets/icon.svg
+compose: compose.addon.yaml
+service: wallapop
+services: wallapop
+state_dirs: data
+secret_files: mcptoken
+mcp_auth: bearer
+mcp_port: 8768
+mcp_path: /mcp

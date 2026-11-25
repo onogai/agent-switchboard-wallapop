@@ -1,0 +1,36 @@
+name: HTTP add-on
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install fastmcp==4.1.4
+      - run: docker build -f packaging/http/Dockerfile -t wallapop-http:test .
+      - name: Validate bearer auth and MCP under add-on runtime constraints
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(mktemp -d)"
+          trap 'docker rm -f wallapop-http-test >/dev/null 2>&1 || true; rm -rf "$state"' EXIT
+          mkdir -m 700 "$state/data"
+          umask 077
+          python -c 'import secrets; print(secrets.token_urlsafe(48))' > "$state/mcptoken"
+          docker run -d --name wallapop-http-test --user "$(id -u):$(id -g)" \
+            --read-only --tmpfs /tmp:rw,nosuid,noexec,size=128m --cap-drop ALL \
+            --security-opt no-new-privileges:true -p 127.0.0.1:18768:8768 \
+            -v "$state/data:/data" -v "$state/mcptoken:/run/secrets/mcptoken:ro" wallapop-http:test
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null http://127.0.0.1:18768/mcp; then break; fi
+            sleep 1
+          done
+          expected="$(docker exec wallapop-http-test python -c 'import json; from wallapop_mcp.mcp_server import _READ_TOOLS, _WRITE_TOOLS; print(json.dumps([f.__name__ for f in _READ_TOOLS+_WRITE_TOOLS]))')"
+          python scripts/smoke_http.py http://127.0.0.1:18768/mcp "$state/mcptoken" "$expected"
