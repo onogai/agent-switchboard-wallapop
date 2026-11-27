@@ -29,7 +29,8 @@ from .client import Wallapop
 from .diagnostics import diagnostic_message, safe_error_payload, safe_text
 from .http import ApiError, Response
 from .ids import resolve_internal_id
-from .models import offer_state_summary, parse_offer_events
+from .models import compact_listing, offer_state_summary, parse_offer_events
+from .monitor import scan_saved_searches
 from .photo_inputs import MAX_PHOTOS, OpenAIFile, download_photo
 from .session import build_client
 
@@ -193,8 +194,9 @@ def search(
     pages: int = 1,
     limit: int = 20,
     fresh: bool = False,
+    detail: bool = False,
 ) -> list:
-    """Search listings with bounded pages and compact results. Fetch item details separately."""
+    """Search compact listings; detail=true returns legacy full records."""
     lim = max(1, min(limit, 50))
     with _lock:
         items = _c().search(
@@ -210,7 +212,7 @@ def search(
             max_price=max_price,
             ship_only=shippable,
         )
-    return _jsonable([i.to_dict() for i in items[:lim]])
+    return _jsonable([i.to_dict() if detail else compact_listing(i) for i in items[:lim]])
 
 
 def get_item(item_id: ItemRef, fresh: bool = False) -> dict:
@@ -309,12 +311,34 @@ def list_saved_searches() -> list:
 
 
 def saved_search_results(search_id: str, next_page: Optional[str] = None,
-                         result_search_id: Optional[str] = None) -> dict:
-    """Get one page of a saved search. Pass both returned cursors for the next page; start without them on each new run."""
+                         result_search_id: Optional[str] = None, pages: int = 1) -> dict:
+    """Get up to 20 pages of a saved search. If has_more, pass both cursors to continue."""
+    _require_session()
+    try:
+        if not 1 <= pages <= 20:
+            raise ValueError("pages must be between 1 and 20")
+        with _lock:
+            if pages == 1:
+                return _jsonable(_c().saved_search_results(search_id, next_page, result_search_id))
+            return _jsonable(_c().saved_search_results(search_id, next_page, result_search_id, pages=pages))
+    except (ApiError, ValueError) as exc:
+        return _known_error(exc)
+
+
+def monitor_saved_searches(run_id: str, search_ids: Optional[list[str]] = None,
+                           max_pages_per_search: int = 20) -> dict:
+    """Scan saved searches, persist history, return only new IDs and price drops.
+    Use a stable unique run_id (e.g. task instance ID); retries replay the same
+    successful result. First complete scan per search establishes a silent baseline.
+    Incomplete scans do not advance history. No changes to the Wallapop account.
+    """
     _require_session()
     try:
         with _lock:
-            return _jsonable(_c().saved_search_results(search_id, next_page, result_search_id))
+            return _jsonable(scan_saved_searches(
+                _c(), Path(_cfg.CONFIG_DIR) / "monitor.sqlite3", run_id,
+                search_ids=search_ids, max_pages_per_search=max_pages_per_search,
+            ))
     except (ApiError, ValueError) as exc:
         return _known_error(exc)
 
@@ -588,7 +612,7 @@ _READ_TOOLS = [
     get_conversation, unread_count, list_purchases, list_sales,
     get_offer_constraints, get_offer_status, seller_items, suggest,
     list_favorites, list_saved_searches, saved_search_results,
-    saved_search_hits, check_saved_search,
+    saved_search_hits, check_saved_search, monitor_saved_searches,
 ]
 _WRITE_TOOLS = [
     set_favorite, send_message, send_offer, respond_offer, counter_offer,

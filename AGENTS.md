@@ -64,13 +64,13 @@ Anchor your first offer below target and move up in small steps; `get_offer_stat
 
 ## MCP tool reference
 
-32 tools. The 13 writes appear only with `--allow-writes`.
+33 tools. The 13 writes appear only with `--allow-writes`.
 
 **Reads:** `session_status`, `search`, `suggest`, `get_item`, `get_seller`,
 `seller_items`, `list_categories`, `list_inbox`, `get_conversation`,
 `unread_count`, `list_purchases` (`tab`), `list_sales` (`tab`),
 `get_offer_constraints`, `get_offer_status`, `list_favorites`,
-`list_saved_searches`, `saved_search_results`, `saved_search_hits`, `check_saved_search`.
+`list_saved_searches`, `saved_search_results`, `saved_search_hits`, `check_saved_search`, `monitor_saved_searches`.
 
 **Writes:** `set_favorite`, `send_message` (`item_id` **or** `conversation_id`),
 `send_offer`, `respond_offer`, `counter_offer`, `publish_item`, `edit_item`,
@@ -81,6 +81,10 @@ Anchor your first offer below target and move up in small steps; `get_offer_stat
 so Wallapop notifies new matches; `saved_search_hits` returns the unseen-match
 counter, `check_saved_search` finds the id of an existing one and
 `remove_saved_search` deletes it. CLI: `wallapop alert save|check|hits|remove`.
+
+For recurring monitoring call `monitor_saved_searches(run_id, search_ids?, max_pages_per_search=20)`. The first complete scan per search (or changed filters) seeds a silent baseline. Later scans return new IDs and price drops, deduplicated across searches. Reuse the same run ID for retries; use a new ID for each scheduled run. Failed or truncated scans do not advance history. History and successful run responses are stored in `monitor.sqlite3` in the persistent config directory (one directory per account). Scheduling and notification delivery remain external; consumers deduplicate replayed deliveries by event ID. No history migration needed.
+
+`search` and `saved_search_results` share compact listing fields. `search(detail=true)` restores the previous full record. Missing public URLs are null rather than triggering hidden detail requests; use `get_item` for selected items. Saved search results accept `pages` (1–20).
 
 Results are JSON. Writes may be partial or unknown — inspect the returned state
 before retrying; there is no checkout or payment.
