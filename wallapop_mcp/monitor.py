@@ -62,6 +62,7 @@ def scan_saved_searches(client, path: Path, run_id: str, *,
             scans = []
             observations = {}
             memberships = {}
+            observed_prices = {}
             for search in saved:
                 sid = search["id"]
                 filters = _canonical(search["filters"])
@@ -74,7 +75,12 @@ def scan_saved_searches(client, path: Path, run_id: str, *,
                 for listing in page["items"]:
                     iid = listing["id"]
                     memberships.setdefault(iid, set()).add(sid)
-                    if iid not in observations or listing["price"] is not None:
+                    # Do not pick an arbitrary price when overlapping searches disagree.
+                    if listing["price"] is not None:
+                        observed_prices.setdefault(iid, set()).add(
+                            (Decimal(str(listing["price"])), listing["currency"]))
+                    current = observations.get(iid)
+                    if current is None or (current["price"] is None and listing["price"] is not None):
                         observations[iid] = listing
                 scans.append({"id": sid, "name": search["name"], "baseline": baseline,
                               "pages": page["pages_scanned"], "items": len(page["items"])})
@@ -82,7 +88,11 @@ def scan_saved_searches(client, path: Path, run_id: str, *,
 
             now = datetime.now(timezone.utc).isoformat()
             changes = []
+            price_conflicts = 0
             for iid, listing in observations.items():
+                if len(observed_prices.get(iid, ())) > 1:
+                    price_conflicts += 1
+                    listing = dict(listing, price=None)
                 previous = db.execute("SELECT price, currency FROM seen_items WHERE id=?", (iid,)).fetchone()
                 price = str(Decimal(str(listing["price"]))) if listing["price"] is not None else None
                 currency = listing["currency"]
@@ -110,7 +120,7 @@ def scan_saved_searches(client, path: Path, run_id: str, *,
                     db.execute("INSERT OR REPLACE INTO item_searches VALUES (?, ?, ?)", (iid, sid, now))
 
             response = {"ok": True, "run_id": run_id, "searches": scans,
-                        "unique_items": len(observations), "changes": changes,
+                        "unique_items": len(observations), "price_conflicts": price_conflicts, "changes": changes,
                         "new_count": sum(c["kind"] == "new" for c in changes),
                         "price_drop_count": sum(c["kind"] == "price_drop" for c in changes)}
             db.execute("INSERT INTO runs VALUES (?, ?, ?)", (run_id, selection, _canonical(response)))

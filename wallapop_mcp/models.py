@@ -158,6 +158,7 @@ class Item:
     top_profile: bool = False
     images: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)
+    price_known: bool = True
 
     @classmethod
     def from_raw(cls, raw: dict, fallback_user_id: Optional[str] = None) -> "Item":
@@ -170,7 +171,8 @@ class Item:
         title = raw.get("title") or ""
         if isinstance(title, dict):
             title = title.get("original") or ""
-        price = safe_price(raw)
+        known_price = listing_price(raw)
+        price = known_price if known_price is not None else 0.0
         flags = raw.get("flags") or {}
         reserved = raw.get("reserved")
         if isinstance(reserved, dict):
@@ -218,6 +220,7 @@ class Item:
             user_name=user_name,
             title=str(title),
             price=price,
+            price_known=known_price is not None,
             currency=extract_currency(raw),
             reserved=reserved,
             sold=sold,
@@ -278,7 +281,7 @@ def compact_listing(item: Item, url: Optional[str] = None) -> dict:
     if url == f"{WEB_BASE}/item/{item.id}":
         url = None
     return {
-        "id": item.id, "title": item.title, "price": item.price,
+        "id": item.id, "title": item.title, "price": item.price if item.price_known else None,
         "currency": item.currency, "url": url, "created_at": item.created_at,
         "city": item.city, "condition": item.condition_text or item.condition,
         "description": item.description[:500], "brand": item.brand,

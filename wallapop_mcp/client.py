@@ -32,7 +32,7 @@ from .config import (
 )
 from .diagnostics import diagnostic_message, safe_error_payload
 from .http import ApiError, NotSentError, Response, eprint, http_request, http_request_raw
-from .models import Item, compact_listing, deep_find, extract_items, first, listing_price, normalize_item
+from .models import Item, compact_listing, deep_find, extract_items, first, normalize_item
 from .tokens import user_hash_of
 
 
@@ -1618,7 +1618,6 @@ class Wallapop:
                 if not isinstance(raw, dict) or not raw.get("id"):
                     raise ApiError("saved search returned an item without an id")
                 listing = compact_listing(normalize_item(raw), raw.get("share_url") or raw.get("shareUrl"))
-                listing["price"] = listing_price(raw)
                 items.append(listing)
             next_page = first(deep_find(resp.data, "next_page")) or None
             if not next_page:

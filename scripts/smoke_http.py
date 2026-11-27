@@ -27,8 +27,8 @@ async def main():
         else:
             raise AssertionError("Unauthenticated request accepted")
     expected = set(json.loads(sys.argv[3]))
-    assert len(expected) == 32
-    assert {"list_saved_searches", "saved_search_results"} <= expected
+    assert len(expected) == 33
+    assert {"list_saved_searches", "saved_search_results", "monitor_saved_searches"} <= expected
     start = time.monotonic()
     async with Client(StreamableHttpTransport(url, headers={"Authorization":"Bearer "+token})) as client:
         names = {tool.name for tool in await client.list_tools()}

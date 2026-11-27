@@ -64,3 +64,13 @@ one account's tokens concurrently from both copies.
 
 Legacy packaging/homelab remains available until this production cutover is
 verified, so rebuilding the old service is not silently changed.
+
+## Saved-search monitoring
+
+The local history is account-scoped in the existing persistent `/data` mount. Before enabling the scheduled task, run the diagnostic below in the updated add-on container, with other Wallapop callers paused. It reads real search pages, uses a temporary monitoring database, prints only aggregate timings and field counts (not tokens, listing contents or cursor values), then verifies replay without upstream calls.
+
+```sh
+python -m wallapop_mcp.benchmark_monitor
+```
+
+Use `--second-scan` for a second fresh scan. Gateway tool calls have a 60-second deadline in current Switchboard Core; compare full-scan wall time with that deadline, including session initialization overhead. For larger search sets, use explicit search_ids and stable per-selection run IDs, or raise the upstream deadline after measuring. Do not change the monitoring rule until the live scan is validated.

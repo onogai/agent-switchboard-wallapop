@@ -92,3 +92,10 @@ def test_malformed_saved_search_page_is_not_empty_success(monkeypatch):
         200, {"search_id": "result"} if a[1] == "/search/components" else {"unexpected": True}, True, False))
     with pytest.raises(ApiError, match="no items array"):
         client.saved_search_results("s1")
+
+
+def test_shared_compact_projection_preserves_unknown_and_free_price():
+    from wallapop_mcp.models import compact_listing, normalize_item
+    assert compact_listing(normalize_item({"id": "a"}))["price"] is None
+    assert compact_listing(normalize_item({"id": "a", "price": 0}))["price"] == 0
+    assert compact_listing(normalize_item({"id": "a", "price": 12.5}))["price"] == 12.5

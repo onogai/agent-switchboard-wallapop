@@ -47,6 +47,7 @@ def test_failure_and_truncation_rollback(tmp_path):
     c = Client()
     scan_saved_searches(c, path, "first")
     c.results["a"] = [item("old", 90), item("new", 10)]
+    c.results["b"] = [item("old", 90)]
     c.fail = "b"
     with pytest.raises(ApiError):
         scan_saved_searches(c, path, "retry")
@@ -79,3 +80,18 @@ def test_replay_rejects_changed_selection(tmp_path):
     scan_saved_searches(c, path, "same", search_ids=["a"])
     with pytest.raises(ValueError, match="different search selection"):
         scan_saved_searches(c, path, "same", search_ids=["b"])
+
+
+@pytest.mark.parametrize("prices", [(80, 100), (100, 80)])
+def test_conflicting_prices_do_not_report_or_advance_price(tmp_path, prices):
+    c = Client()
+    path = tmp_path / "monitor.db"
+    scan_saved_searches(c, path, "first")
+    c.results = {"a": [item("old", prices[0])], "b": [item("old", prices[1])]}
+    result = scan_saved_searches(c, path, "conflict")
+    assert result["price_conflicts"] == 1
+    assert result["changes"] == []
+    c.results = {"a": [item("old", 80)], "b": [item("old", 80)]}
+    result = scan_saved_searches(c, path, "confirmed")
+    assert result["price_drop_count"] == 1
+    assert result["changes"][0]["previous_price"] == 100

@@ -147,6 +147,8 @@ Constructor: `Wallapop(token=None, refresh_token=None, email=None, persist_fn=No
 | `purchases(tab)` / `selling(tab)` → `dict` | the web's **Purchases/Sales** hubs via SDUI (`GET /sdui/{purchases\|selling}/{ongoing\|finished}`); tab = `"ongoing"`/`"finished"`. Parse the tree with `parse_sdui_transactions` |
 | `save_search(params)` → `str` | saves a search (`POST /searchalerts/savedsearch`); returns the **UUID** from the `Location` header |
 | `saved_search_exists(params)` → `Optional[str]` | id of the saved search for those filters, or `None` (`HEAD /searchalerts/savedsearch/exists`, 200+`Location` / 404) |
+| `list_saved_searches()` → `list[dict]` | Account saved searches with IDs, names and filters |
+| `saved_search_results(search_id, next_page=None, result_search_id=None, pages=1)` → `dict` | Compact listing pages and continuation cursors |
 | `saved_search_hits()` → `int` | new-match counter across your saved searches (`GET /searchalerts/savedsearch/alerts/total-hits` → `data.hits`) |
 | `remove_saved_search(search_id)` → `Response` | deletes a saved search by UUID (`DELETE /searchalerts/savedsearch/{id}`, 200) |
 | `login(email, password)` / `try_refresh()` / `refresh_web()` | session |
