@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Optional
@@ -37,24 +38,24 @@ def extract_items(payload: Any) -> list:
     return []
 
 
-def safe_price(raw: dict) -> float:
+def listing_price(raw: dict) -> Optional[float]:
+    """Unknown price is not a free listing."""
     price = raw.get("price")
-    if price is None:
-        return 0.0
-    if isinstance(price, (int, float)):
-        return float(price)
+    candidates = [price]
     if isinstance(price, dict):
-        for key in ("amount", "cash_amount", "full_amount"):
-            val = price.get(key)
-            if isinstance(val, (int, float)):
-                return float(val)
+        candidates = [price.get(key) for key in ("amount", "cash_amount", "full_amount")]
         for sub in ("cash", "full"):
             box = price.get(sub)
             if isinstance(box, dict):
-                val = box.get("amount")
-                if isinstance(val, (int, float)):
-                    return float(val)
-    return 0.0
+                candidates.append(box.get("amount"))
+    for val in candidates:
+        if isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(val) and val >= 0:
+            return float(val)
+    return None
+
+
+def safe_price(raw: dict) -> float:
+    return listing_price(raw) or 0.0
 
 
 def extract_currency(raw: dict) -> str:
@@ -157,6 +158,7 @@ class Item:
     top_profile: bool = False
     images: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)
+    price_known: bool = True
 
     @classmethod
     def from_raw(cls, raw: dict, fallback_user_id: Optional[str] = None) -> "Item":
@@ -169,7 +171,8 @@ class Item:
         title = raw.get("title") or ""
         if isinstance(title, dict):
             title = title.get("original") or ""
-        price = safe_price(raw)
+        known_price = listing_price(raw)
+        price = known_price if known_price is not None else 0.0
         flags = raw.get("flags") or {}
         reserved = raw.get("reserved")
         if isinstance(reserved, dict):
@@ -217,6 +220,7 @@ class Item:
             user_name=user_name,
             title=str(title),
             price=price,
+            price_known=known_price is not None,
             currency=extract_currency(raw),
             reserved=reserved,
             sold=sold,
@@ -269,6 +273,21 @@ class Item:
             "images": list(self.images),
             "url": self.url,
         }
+
+
+def compact_listing(item: Item, url: Optional[str] = None) -> dict:
+    """Agent-facing listing projection, without images or seller metadata."""
+    url = url or item.url
+    if url == f"{WEB_BASE}/item/{item.id}":
+        url = None
+    return {
+        "id": item.id, "title": item.title, "price": item.price if item.price_known else None,
+        "currency": item.currency, "url": url, "created_at": item.created_at,
+        "city": item.city, "condition": item.condition_text or item.condition,
+        "description": item.description[:500], "brand": item.brand,
+        "category": item.category_name or item.category,
+        "shippable": item.shippable, "reserved": item.reserved, "sold": item.sold,
+    }
 
 
 def normalize_item(raw: dict, fallback_user_id: Optional[str] = None) -> Item:

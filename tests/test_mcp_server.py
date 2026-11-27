@@ -16,7 +16,7 @@ READ_TOOLS = {
     "list_sales", "get_offer_constraints", "get_offer_status",
     "seller_items", "suggest", "list_favorites", "list_saved_searches",
     "saved_search_results", "saved_search_hits",
-    "check_saved_search",
+    "check_saved_search", "monitor_saved_searches",
 }
 WRITE_TOOLS = {
     "set_favorite", "send_message", "send_offer", "respond_offer",
@@ -42,7 +42,7 @@ def test_allow_writes_exposes_mutations(tmp_path):
     mcp_server._init(str(tmp_path), allow_writes=True)
     both = _tool_names(True)
     assert both == READ_TOOLS | WRITE_TOOLS
-    assert len(both) == 32
+    assert len(both) == 33
 
 
 def test_account_tool_requires_a_session(tmp_path, monkeypatch):

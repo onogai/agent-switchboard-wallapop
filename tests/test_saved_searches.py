@@ -55,3 +55,47 @@ def test_errors_are_not_empty_results(monkeypatch):
         client.list_saved_searches()
     with pytest.raises(ApiError, match="503"):
         client.saved_search_hits()
+
+
+def test_multiple_pages_reuse_filters_without_detail_requests(monkeypatch):
+    client = Wallapop(token="fake")
+    list_calls = []
+    monkeypatch.setattr(client, "list_saved_searches", lambda: list_calls.append(1) or [
+        {"id": "s1", "name": "bike", "filters": {"keywords": "bike"}}])
+    calls = []
+
+    def request(method, path, params=None):
+        calls.append(path)
+        if path == "/search/components":
+            return Response(200, {"search_id": "result"}, True, False)
+        return Response(200, {"items": [{"id": "item1", "title": "Bike",
+                                        "description": "A bike", "location": {"city": "Malaga"}}],
+                              "next_page": None if params.get("next_page") else "cursor"}, True, False)
+
+    monkeypatch.setattr(client, "_request", request)
+    monkeypatch.setattr(client, "item", lambda *_: pytest.fail("unexpected detail lookup"))
+    result = client.saved_search_results("s1", pages=2)
+    assert list_calls == [1]
+    assert calls == ["/search/components", "/search/section", "/search/section"]
+    assert result["pages_scanned"] == 2
+    assert result["has_more"] is False
+    assert result["items"][0]["price"] is None
+    assert result["items"][0]["url"] is None
+    assert result["items"][0]["city"] == "Malaga"
+
+
+def test_malformed_saved_search_page_is_not_empty_success(monkeypatch):
+    client = Wallapop(token="fake")
+    monkeypatch.setattr(client, "list_saved_searches", lambda: [
+        {"id": "s1", "name": "bike", "filters": {"keywords": "bike"}}])
+    monkeypatch.setattr(client, "_request", lambda *a, **kw: Response(
+        200, {"search_id": "result"} if a[1] == "/search/components" else {"unexpected": True}, True, False))
+    with pytest.raises(ApiError, match="no items array"):
+        client.saved_search_results("s1")
+
+
+def test_shared_compact_projection_preserves_unknown_and_free_price():
+    from wallapop_mcp.models import compact_listing, normalize_item
+    assert compact_listing(normalize_item({"id": "a"}))["price"] is None
+    assert compact_listing(normalize_item({"id": "a", "price": 0}))["price"] == 0
+    assert compact_listing(normalize_item({"id": "a", "price": 12.5}))["price"] == 12.5

@@ -131,10 +131,10 @@ favorites, purchases/sales, saved searches and every write need a session.
 
 ## MCP tools
 
-30 tools. Required arguments are listed; everything else is optional. Item arguments accept an internal id,
+33 tools. Required arguments are listed; everything else is optional. Item arguments accept an internal id,
 a web slug or a full URL.
 
-#### Read (17)
+#### Read and local monitoring (20)
 
 | Tool | Required args | What it does |
 |---|---|---|
@@ -153,6 +153,9 @@ a web slug or a full URL.
 | `seller_items` | `user_id` | List a seller's published listings (their profile grid) |
 | `suggest` | `keyword` | Autocomplete suggestions for a search keyword, as the web search box shows them |
 | `list_favorites` | — | List the listings the signed-in account has favorited |
+| `list_saved_searches` | — | List saved search IDs, names and filters |
+| `saved_search_results` | `search_id` | Compact listing pages; optional `pages` (1–20) |
+| `monitor_saved_searches` | `run_id` | Local persistent monitoring; first scan is silent, retries replay changes |
 | `saved_search_hits` | — | Total new listings across the account's saved searches (the web's badge counter) |
 | `check_saved_search` | `keywords` | Check whether a search with exactly these filters is saved; returns its id or null |
 

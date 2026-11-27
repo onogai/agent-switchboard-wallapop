@@ -32,7 +32,7 @@ from .config import (
 )
 from .diagnostics import diagnostic_message, safe_error_payload
 from .http import ApiError, NotSentError, Response, eprint, http_request, http_request_raw
-from .models import Item, deep_find, extract_items, first, normalize_item
+from .models import Item, compact_listing, deep_find, extract_items, first, normalize_item
 from .tokens import user_hash_of
 
 
@@ -1576,13 +1576,19 @@ class Wallapop:
         return searches
 
     def saved_search_results(self, search_id: str, next_page: Optional[str] = None,
-                             result_search_id: Optional[str] = None) -> dict:
-        """Run one saved query and return one cursor-paginated result page."""
+                             result_search_id: Optional[str] = None, *, pages: int = 1) -> dict:
+        """Fetch bounded pages without reloading filters per page."""
         saved = next((s for s in self.list_saved_searches() if s["id"] == search_id), None)
         if saved is None:
             raise ApiError(f"saved search {search_id} not found")
+        return self._saved_search_pages(saved, next_page, result_search_id, pages=pages)
+
+    def _saved_search_pages(self, saved: dict, next_page: Optional[str] = None,
+                            result_search_id: Optional[str] = None, *, pages: int = 1) -> dict:
         if next_page and not result_search_id:
             raise ValueError("result_search_id is required with next_page")
+        if not 1 <= pages <= 100:
+            raise ValueError("pages must be between 1 and 100")
         base = dict(saved["filters"])
         base.setdefault("source", "search_box")
         base.setdefault("filters_source", "search_box")
@@ -1596,31 +1602,32 @@ class Wallapop:
                 raise ApiError("saved search returned no search_id")
         params = dict(base)
         params.update({"search_id": result_search_id, "section_type": "organic_search_results", "source": "deep_link"})
-        if next_page:
-            params["next_page"] = next_page
-        resp = self._request("GET", "/search/section", params=params)
-        if not resp.ok:
-            raise ApiError(f"saved search page failed ({resp.status})")
         items = []
-        for raw in extract_items(resp.data):
-            if not isinstance(raw, dict) or not raw.get("id"):
-                continue
-            item = normalize_item(raw)
-            slug = raw.get("web_slug") or raw.get("slug")
-            url = raw.get("share_url") or raw.get("shareUrl")
-            if not url and slug:
-                url = f"{WEB_BASE}/item/{slug}"
-            if not url:
-                try:
-                    detail = self.item(item.id)
-                    url = detail.url if detail.url != f"{WEB_BASE}/item/{item.id}" else None
-                except ApiError:
-                    url = None
-            items.append({"id": item.id, "title": item.title, "price": item.price,
-                          "currency": item.currency, "url": url, "created_at": item.created_at})
-        cursor = first(deep_find(resp.data, "next_page"))
-        return {"saved_search_id": search_id, "items": items, "next_page": cursor or None,
-                "result_search_id": result_search_id, "has_more": bool(cursor)}
+        seen = {next_page} if next_page else set()
+        for index in range(pages):
+            query = dict(params)
+            if next_page:
+                query["next_page"] = next_page
+            resp = self._request("GET", "/search/section", params=query)
+            if not resp.ok:
+                raise ApiError(f"saved search page failed ({resp.status})")
+            raw_items = first(v for v in deep_find(resp.data, "items") if isinstance(v, list))
+            if raw_items is None:
+                raise ApiError("saved search returned no items array")
+            for raw in raw_items:
+                if not isinstance(raw, dict) or not raw.get("id"):
+                    raise ApiError("saved search returned an item without an id")
+                listing = compact_listing(normalize_item(raw), raw.get("share_url") or raw.get("shareUrl"))
+                items.append(listing)
+            next_page = first(deep_find(resp.data, "next_page")) or None
+            if not next_page:
+                break
+            if not isinstance(next_page, str) or next_page in seen:
+                raise ApiError("saved search returned a repeated or invalid cursor")
+            seen.add(next_page)
+        return {"saved_search_id": saved["id"], "items": items, "next_page": next_page,
+                "result_search_id": result_search_id, "has_more": bool(next_page),
+                "pages_scanned": index + 1}
 
     def saved_search_hits(self) -> int:
         """Total new-listing counter across your saved searches (GET .../alerts/total-hits).
